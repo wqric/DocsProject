@@ -35,10 +35,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.NavController
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
@@ -46,6 +50,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.docsproject.R
+import com.example.docsproject.presentation.ui.theme.Background
 import com.example.docsproject.presentation.ui.theme.BluePrimary
 import com.example.docsproject.presentation.ui.theme.DocsProjectTheme
 import com.example.docsproject.presentation.viewmodels.PhotoViewModel
@@ -75,6 +80,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             DocsProjectTheme {
+                ChangeStatusBarAndNavBarColor()
                 val navController = rememberNavController()
                 val historyState = remember { mutableStateOf(false) }
                 val documentState = remember { mutableStateOf(false) }
@@ -83,7 +89,7 @@ class MainActivity : ComponentActivity() {
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         bottomBar = {
-                            NavigationBar {
+                            NavigationBar(containerColor = Color.White) {
                                 ROUTES.forEach { route ->
 
                                     val selected = navController.currentRoute() == route.route
@@ -161,12 +167,29 @@ class MainActivity : ComponentActivity() {
                                 .background(Color.Black.copy(alpha = alpha.value))
                         )
                     }
-                    YourDocumentScreen(documentState, viewModel.photoUri.value)
                     History(historyState, viewModel.getAllPhotos(this@MainActivity))
                 }
             }
         }
     }
+}
+
+@Composable
+fun ChangeStatusBarAndNavBarColor() {
+    val context = LocalContext.current
+    val view = LocalView.current
+    val window = (context as? ComponentActivity)?.window
+        ?: throw Exception("Not in an Activity")
+
+    WindowCompat.setDecorFitsSystemWindows(window, false)
+
+    val insetsController = WindowInsetsControllerCompat(window, view)
+
+    insetsController.isAppearanceLightStatusBars = true
+    insetsController.isAppearanceLightNavigationBars = true
+
+    window.statusBarColor = Background.toArgb()
+    window.navigationBarColor = Color.White.toArgb()
 }
 
 @Composable

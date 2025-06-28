@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">DocsProject</string>
     <string name="title_activity_main">MainActivity</string>
+    <string name="title_activity_document_scanner">DocumentScannerActivity</string>
 </resources>

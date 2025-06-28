@@ -36,42 +36,44 @@ import com.example.docsproject.presentation.ui.theme.EmptyIcon
 
 @Composable
 fun YourDocumentScreen(visible: MutableState<Boolean>, photoUri: Uri?) {
-    CustomPartialBottomSheet(visible) {
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.98f)
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .fillMaxWidth(0.98f)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+            Icon(
+                painter = painterResource(R.drawable.cross),
+                contentDescription = null,
+                modifier = Modifier
+                    .padding(end = 12.dp)
+                    .size(36.dp)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }) {
+                        visible.value = false
+                    }
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                text = "Your Document",
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Spacer(Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .padding(end = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.cross),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .size(36.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }) {
-                            visible.value = false
-                        }
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "Your Document",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Spacer(Modifier.weight(1f))
-                Box(modifier = Modifier.size(36.dp).padding(end = 12.dp), contentAlignment = Alignment.Center) {
-                    Icon(
-                        painter = painterResource(R.drawable.edit), contentDescription = null,
-                        modifier = Modifier.size(24.dp)
+                    painter = painterResource(R.drawable.edit), contentDescription = null,
+                    modifier = Modifier.size(24.dp)
 
-                    )
-                }
-
+                )
             }
             Spacer(Modifier.height(20.dp))
             Box(
