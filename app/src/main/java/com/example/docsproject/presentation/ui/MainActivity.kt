@@ -1,6 +1,5 @@
 package com.example.docsproject.presentation.ui
 
-import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -28,20 +27,18 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
-import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.NavController
@@ -52,18 +49,17 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.docsproject.R
 import com.example.docsproject.presentation.ui.theme.Background
-import com.example.docsproject.presentation.ui.theme.BluePrimary
+import com.example.docsproject.presentation.ui.theme.OrangePrimary
 import com.example.docsproject.presentation.ui.theme.DocsProjectTheme
 import com.example.docsproject.presentation.viewmodels.PhotoViewModel
+import com.google.accompanist.systemuicontroller.rememberSystemUiController
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_PDF
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
-import kotlinx.coroutines.launch
 import org.koin.androidx.viewmodel.ext.android.viewModel
-import java.lang.Thread.sleep
 
 sealed class Route(
     val route: String,
@@ -92,9 +88,6 @@ class MainActivity : ComponentActivity() {
         setContent {
             DocsProjectTheme {
                 val navController = rememberNavController()
-                val pdfUri = remember { mutableStateOf("".toUri()) }
-                val currentDocument = remember { mutableStateListOf<Bitmap>() }
-
                 Scaffold(
                     modifier = Modifier
                         .fillMaxSize()
@@ -125,7 +118,7 @@ class MainActivity : ComponentActivity() {
                                                     painter = painterResource(route.icon),
                                                     contentDescription = route.route,
                                                     modifier = Modifier.size(24.dp),
-                                                    tint = if (selected) BluePrimary
+                                                    tint = if (selected) OrangePrimary
                                                     else MaterialTheme.colorScheme.onSurface.copy(
                                                         alpha = 0.6f
                                                     )
@@ -134,7 +127,7 @@ class MainActivity : ComponentActivity() {
                                                 Text(
                                                     text = route.route,
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = if (selected) BluePrimary else MaterialTheme.colorScheme.onSurface.copy(
+                                                    color = if (selected) OrangePrimary else MaterialTheme.colorScheme.onSurface.copy(
                                                         alpha = 0.6f
                                                     )
                                                 )
@@ -148,22 +141,29 @@ class MainActivity : ComponentActivity() {
                             }
                     }
                 ) { innerPadding ->
-                    ChangeStatusBarAndNavBarColor()
-                    val images = remember {
-                        mutableStateListOf<Uri>()
-                    }
+
                     if (navController.currentRoute() == "E-sign" || navController.currentRoute() == "settings") {
-                        images.clear()
+                        viewModel.documents.clear()
+                    }
+                    if (navController.currentRoute() != "document (bitmap)" || navController.currentRoute() != "document") {
+                        viewModel.pageStates.clear()
                     }
                     val scannerLauncher = rememberLauncherForActivityResult(
                         contract = ActivityResultContracts.StartIntentSenderForResult()
                     ) {
                         if (it.resultCode == RESULT_OK) {
                             val result = GmsDocumentScanningResult.fromActivityResultIntent(it.data)
-                            images.addAll(result?.pages?.map { it.imageUri } ?: emptyList())
-                            navController.navigate("document")
+                            val uris = result?.pages?.map { it.imageUri } ?: emptyList()
+                            viewModel.documents.clear()
+                            viewModel.documents.addAll(uris)
+                            navController.navigate("document") {
+                                launchSingleTop = true
+                                popUpTo("document") { inclusive = true }
+                            }
                         }
                     }
+
+
 
                     NavHost(
                         navController = navController,
@@ -173,11 +173,9 @@ class MainActivity : ComponentActivity() {
                             .padding(top = 20.dp)
                     ) {
                         composable(Route.ESign.route) {
-                            viewModel.getAllDocuments()
                             ESignScreen(
                                 navController = navController,
                                 viewModel = viewModel,
-                                currentDocument = currentDocument,
                                 onTakePhotoClick = {
                                     scanner.getStartScanIntent(this@MainActivity)
                                         .addOnSuccessListener {
@@ -201,17 +199,23 @@ class MainActivity : ComponentActivity() {
                             HistoryScreen(
                                 navController = navController,
                                 viewModel = viewModel,
-                                currentDocument = currentDocument,
-                                pdfUri = pdfUri
                             )
 
                         }
                         composable("document") {
-                            YourDocumentScreen(navController, images, viewModel, viewModel.map)
+                            Log.d("init", "init")
+                            if (viewModel.documents.isNotEmpty()) {
+                                YourDocumentScreen(
+                                    navController,
+                                    viewModel,
+                                )
+                            }
                         }
                         composable("document (bitmap)") {
-                            Log.d("document", "init")
-                            YourDocumentScreenBitmap(navController,  viewModel.map, currentDocument, pdfUri, viewModel)
+                            YourDocumentScreenBitmap(
+                                navController,
+                                viewModel
+                            )
                         }
                     }
                 }
@@ -220,23 +224,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-fun ChangeStatusBarAndNavBarColor() {
-    val context = LocalContext.current
-    val view = LocalView.current
-    val window = (context as? ComponentActivity)?.window
-        ?: throw Exception("Not in an Activity")
-
-    WindowCompat.setDecorFitsSystemWindows(window, false)
-
-    val insetsController = WindowInsetsControllerCompat(window, view)
-
-    insetsController.isAppearanceLightStatusBars = true
-    insetsController.isAppearanceLightNavigationBars = true
-
-    window.statusBarColor = Background.toArgb()
-    window.navigationBarColor = Color.White.toArgb()
-}
 
 @Composable
 fun NavController.currentRoute(): String? {

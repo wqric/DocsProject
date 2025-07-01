@@ -5,9 +5,11 @@ import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.util.Log
+import android.webkit.MimeTypeMap
 import androidx.core.content.FileProvider
 import androidx.core.net.toUri
 import com.example.docsproject.domain.reps.PhotoRepository
+import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -15,17 +17,33 @@ import java.io.InputStream
 import java.time.LocalDate
 
 class PhotoRepositoryImpl(private val context: Context) : PhotoRepository {
-    override fun savePdfDocument(context: Context, document: PdfDocument): Uri {
+    override fun savePdfDocument(context: Context, document: PdfDocument, name: String): Uri {
+        var outputStream: FileOutputStream? = null
         try {
-            val pdfFile = File(
-                context.filesDir,
-                "document_${System.currentTimeMillis()}_${LocalDate.now()}.pdf"
-            )
-            FileOutputStream(pdfFile).use { outputStream ->
-                document.writeTo(outputStream)
+            val safeName = name.replace(Regex("[^a-zA-Z0-9_-]"), "_")
+            val fileName = "$safeName.pdf"
+            val pdfFile = File(context.filesDir, fileName)
+
+            outputStream = FileOutputStream(pdfFile)
+            BufferedOutputStream(outputStream).use { bufferedStream ->
+                document.writeTo(bufferedStream)
             }
-            Log.e("PDF_CREATION", pdfFile.absolutePath)
-            return pdfFile.absolutePath.toUri()
+
+            if (pdfFile.length() == 0L) {
+                throw IOException("PDF file is empty (0 bytes)")
+            }
+
+            val authority = "${context.packageName}.fileprovider"
+            val fileUri = FileProvider.getUriForFile(context, authority, pdfFile)
+
+            val mimeType = context.contentResolver.getType(fileUri)
+                ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension("pdf")
+                ?: "application/pdf"
+
+            Log.d("PDF_SAVE", "PDF saved: ${pdfFile.absolutePath}")
+            Log.d("PDF_SAVE", "MIME Type: $mimeType")
+            Log.d("PDF_SAVE", "File size: ${pdfFile.length()} bytes") // Должно быть "application/pdf"
+            return fileUri
         } catch (e: Exception) {
             Log.e("PDF_SAVE", "Ошибка сохранения PDF: ${e.message}")
             return "".toUri()
@@ -33,7 +51,9 @@ class PhotoRepositoryImpl(private val context: Context) : PhotoRepository {
             document.close()
         }
     }
-
+    override fun isFileNameExists(context: Context, fileName: String): Boolean {
+        return File(context.filesDir, "$fileName.pdf").exists()
+    }
     override fun savePdfFromUri(context: Context, sourceUri: Uri): Uri {
         val pdfFile =
             File(context.filesDir, "document_${System.currentTimeMillis()}_${LocalDate.now()}.pdf")
@@ -44,6 +64,13 @@ class PhotoRepositoryImpl(private val context: Context) : PhotoRepository {
         } ?: throw IOException("Не удалось открыть файл: $sourceUri")
 
         return pdfFile.absolutePath.toUri()
+    }
+
+    override fun getDocumentByUri(context: Context, uri: Uri): File {
+        return File(
+            context.filesDir,
+            uri.toString()
+        )
     }
 
     override fun getFileByUri(context: Context,uri: Uri): InputStream? {
@@ -70,7 +97,7 @@ class PhotoRepositoryImpl(private val context: Context) : PhotoRepository {
         val file = File(uri.toString())
         val uri = FileProvider.getUriForFile(
             context,
-            "${context.packageName}.provider",
+            "${context.packageName}.fileprovider",
             file
         )
         val parcelFileDescriptor = context.contentResolver.openFileDescriptor(uri, "r")

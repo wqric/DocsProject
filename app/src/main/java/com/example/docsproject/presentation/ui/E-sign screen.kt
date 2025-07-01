@@ -1,19 +1,12 @@
 package com.example.docsproject.presentation.ui
 
-import android.Manifest
-import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Bitmap
 import android.net.Uri
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,22 +19,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,28 +35,21 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
-import com.example.docsproject.presentation.ui.theme.BluePrimary
-import com.example.docsproject.presentation.ui.theme.DocsProjectTheme
+import com.example.docsproject.presentation.ui.theme.OrangePrimary
 import com.example.docsproject.R
 import com.example.docsproject.presentation.ui.theme.Background
-import com.example.docsproject.presentation.ui.theme.Gray1
 import com.example.docsproject.presentation.viewmodels.PhotoViewModel
-import java.lang.Thread.sleep
 
 @Composable
 
 fun ESignScreen(
     navController: NavController,
     viewModel: PhotoViewModel,
-    currentDocument: SnapshotStateList<Bitmap>,
     onTakePhotoClick: () -> Unit
 ) {
+    viewModel.updateData()
     var alertState by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
@@ -116,7 +95,7 @@ fun ESignScreen(
                             Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
                         val uri = viewModel.saveExternalPdf(context, uri)
-                        currentDocument.addAll(viewModel.renderDocument(uri))
+                        viewModel.currentPdfBitmaps.addAll(viewModel.renderDocument(uri))
                         navController.navigate("document (bitmap)")
                     }
                 }
@@ -149,7 +128,7 @@ fun ESignScreen(
                             .fillMaxHeight()
                             .weight(1f)
                             .clip(shape = MaterialTheme.shapes.large)
-                            .background(BluePrimary)
+                            .background(OrangePrimary)
                             .padding(end = 5.dp, top = 5.dp)
                             .clickable {
                                 pdfPickerLauncher.launch(arrayOf("application/pdf"))
@@ -179,7 +158,8 @@ fun ESignScreen(
                     )
                     .background(Color.White)
                     .clickable {
-                        if (viewModel.uriList.toList().isNotEmpty()) {
+                        if (viewModel.uriList.isNotEmpty()) {
+                            viewModel.updateData()
                             navController.navigate("history")
                         } else {
                             alertState = true

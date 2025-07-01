@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -70,6 +71,7 @@ import androidx.core.graphics.createBitmap
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import coil.disk.DiskCache
+import com.example.docsproject.presentation.ui.theme.Background
 import com.example.docsproject.presentation.viewmodels.PhotoViewModel
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
@@ -81,31 +83,19 @@ import java.lang.Thread.sleep
 fun HistoryScreen(
     navController: NavController,
     viewModel: PhotoViewModel,
-    pdfUri: MutableState<Uri>,
-    currentDocument: SnapshotStateList<Bitmap>,
 ) {
-    LaunchedEffect({}) {
-        viewModel.updateData()
-    }
-    val uriList = viewModel.uriList.toList()
+
     DisposableEffect({}) {
         onDispose {
             viewModel.uriList.clear()
         }
     }
-    val removeUriList = uriList.toMutableList()
     var state by remember { mutableStateOf(false) }
-    LaunchedEffect(uriList.isEmpty()) {
-        CoroutineScope(Dispatchers.Default).launch {
-            sleep(300)
-            state = uriList.isEmpty() && removeUriList.isEmpty() && viewModel.uriList.isEmpty()
-        }
-    }
     Column(
         modifier = Modifier
             .fillMaxHeight()
             .fillMaxWidth()
-            .background(Color.White),
+            .background(Background),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
@@ -157,37 +147,34 @@ fun HistoryScreen(
             }
             Spacer(Modifier.height(25.dp))
             LazyColumn(verticalArrangement = Arrangement.SpaceBetween) {
-                items(uriList) { uri ->
+                items(viewModel.uriList) { uri ->
                     var showDialog by remember { mutableStateOf(false) }
                     var visible by remember { mutableStateOf(true) }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (visible) {
-                            HistoryCard(
-                                date = uri.toString()
-                                    .substringAfterLast("_")
-                                    .substringBeforeLast("."),
-                                uri = uri,
-                                currentDocument = currentDocument,
-                                viewModel = viewModel,
-                                navController = navController,
-                                pdfUri = pdfUri
+                        HistoryCard(
+                            date = uri.toString()
+                                .substringAfterLast("/")
+                                .substringBeforeLast("."),
+                            uri = uri,
+                            viewModel = viewModel,
+                            navController = navController,
+
                             )
-                            Spacer(Modifier.weight(1f))
-                            Icon(
-                                painter = painterResource(R.drawable.basket),
-                                contentDescription = null,
-                                tint = Color.Red,
-                                modifier = Modifier.clickable(
-                                    indication = null,
-                                    interactionSource = remember { MutableInteractionSource() }
-                                ) {
-                                    showDialog = true
-                                }
-                            )
-                        }
+                        Spacer(Modifier.weight(1f))
+                        Icon(
+                            painter = painterResource(R.drawable.basket),
+                            contentDescription = null,
+                            tint = Color.Red,
+                            modifier = Modifier.clickable(
+                                indication = null,
+                                interactionSource = remember { MutableInteractionSource() }
+                            ) {
+                                showDialog = true
+                            }
+                        )
                         if (showDialog) {
                             AlertDialog(
                                 onDismissRequest = { showDialog = false },
@@ -198,8 +185,8 @@ fun HistoryScreen(
                                         onClick = {
                                             showDialog = false
                                             visible = false
-                                            removeUriList.remove(uri)
-                                            if (removeUriList.isEmpty()) {
+                                            viewModel.uriList.remove(uri)
+                                            if (viewModel.uriList.isEmpty()) {
                                                 state = true
                                             }
                                             viewModel.deleteDocument(uri)
@@ -218,6 +205,8 @@ fun HistoryScreen(
                             )
                         }
                     }
+                    Spacer(Modifier.height(20.dp))
+
                 }
             }
         }
@@ -230,120 +219,42 @@ fun HistoryScreen(
 fun HistoryCard(
     date: String,
     navController: NavController,
-    currentDocument: SnapshotStateList<Bitmap>,
-    pdfUri: MutableState<Uri>,
     uri: Uri,
     viewModel: PhotoViewModel
 ) {
-    val bitmaps = viewModel.renderDocument(uri)
     val navigationLambda: () -> Unit = remember {
         {
-            currentDocument.addAll(bitmaps)
+            viewModel.currentPdfBitmaps.addAll(viewModel.renderDocument(uri))
             navController.navigate("document (bitmap)")
         }
     }
-    if (!bitmaps.isEmpty()) {
-        Column(
-            modifier = Modifier
-                .height(150.dp)
-                .width(250.dp)
-                .clip(shape = MaterialTheme.shapes.large)
-                .background(EmptyIcon)
-                .clickable {
-                    pdfUri.value = uri
-                    navigationLambda()
-                },
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            AsyncImage(
-                model = bitmaps[0],
-                contentDescription = null,
-                modifier = Modifier.weight(1f),
-                contentScale = ContentScale.Fit
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(20.dp)
-                    .background(Gray2),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = date,
-                    style = MaterialTheme.typography.displayMedium,
-                    modifier = Modifier.padding(start = 12.dp)
-                )
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    painter = painterResource(R.drawable.arrow), contentDescription = null,
-                    modifier = Modifier.padding(end = 12.dp)
-                )
-            }
-        }
+
+    Column(
+        modifier = Modifier
+            .height(150.dp)
+            .width(250.dp)
+            .clip(shape = MaterialTheme.shapes.large)
+            .background(Color.White)
+            .clickable {
+                viewModel.currentPdf.value = uri
+                navigationLambda()
+            },
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(Modifier.height(10.dp))
+        Image(
+            painter = painterResource(R.drawable.pdf_file_type),
+            contentDescription = null,
+            modifier = Modifier.size(60.dp),
+            contentScale = ContentScale.Fit
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            text = date,
+            style = MaterialTheme.typography.displayMedium,
+            modifier = Modifier.padding(start = 12.dp)
+        )
+        Spacer(Modifier.weight(1f))
     }
 }
 
-
-@Composable
-fun PdfStaticImageView(
-    filePath: Uri,
-    pageIndex: Int = 0,
-    viewModel: PhotoViewModel
-) {
-    val coroutineScope = rememberCoroutineScope()
-    var bitmapState by remember { mutableStateOf<Bitmap?>(null) }
-    var errorState by remember { mutableStateOf<String?>(null) }
-    DisposableEffect(filePath, pageIndex) {
-        val job = coroutineScope.launch(Dispatchers.IO) {
-            try {
-                bitmapState = viewModel.renderDocument(filePath, pageIndex)[0]
-            } catch (e: Exception) {
-                errorState = "Error loading PDF: ${e.message}"
-            }
-        }
-
-        onDispose {
-            job.cancel()
-            bitmapState?.recycle()
-            bitmapState = null
-        }
-    }
-    when {
-        bitmapState != null -> {
-            AndroidView(
-                factory = { context ->
-                    ImageView(context).apply {
-                        scaleType = ImageView.ScaleType.CENTER_CROP
-                    }
-                },
-                update = { imageView ->
-                    imageView.setImageBitmap(bitmapState)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-            )
-        }
-
-        errorState != null -> {
-            Text(
-                text = errorState!!,
-                modifier = Modifier.padding(8.dp)
-            )
-        }
-
-        else -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .background(Color.LightGray),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        }
-    }
-}

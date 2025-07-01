@@ -1,6 +1,7 @@
 package com.example.docsproject.presentation.ui
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
@@ -12,7 +13,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,10 +24,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -35,7 +35,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -54,7 +53,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.motionEventSpy
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
@@ -64,37 +62,32 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.core.content.FileProvider
-import androidx.core.net.toUri
 import androidx.navigation.NavController
 import coil.compose.AsyncImage
 import com.example.docsproject.R
 import com.example.docsproject.presentation.ui.theme.Background
-import com.example.docsproject.presentation.ui.theme.BluePrimary
+import com.example.docsproject.presentation.ui.theme.OrangePrimary
 import com.example.docsproject.presentation.viewmodels.PhotoViewModel
 import kotlinx.coroutines.launch
-import javax.crypto.Cipher
 
 @Composable
 fun YourDocumentScreen(
     navController: NavController,
-    photoUriList: SnapshotStateList<Uri>,
     viewModel: PhotoViewModel,
-    map: MutableMap<Int, PageState>,
-
-    ) {
+) {
     DisposableEffect({}) {
         onDispose {
-            map.clear()
-            photoUriList.clear()
+            viewModel.pageStates.clear()
+            viewModel.documents.clear()
         }
     }
+    viewModel.initPageStates()
     val showDialog = remember { mutableStateOf(false) }
-    val uri = remember { mutableStateOf("".toUri()) }
     var composeCanvasSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current.density
     val context = LocalContext.current
-
+    val text = remember { mutableStateOf("") }
+    val writeText = remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxHeight()
@@ -103,7 +96,7 @@ fun YourDocumentScreen(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
 
-        val pager = rememberPagerState { photoUriList.size }
+        val pager = rememberPagerState { viewModel.documents.size }
         val coroutineScope = rememberCoroutineScope()
         Column(
             modifier = Modifier
@@ -126,8 +119,8 @@ fun YourDocumentScreen(
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }) {
-                            photoUriList.clear()
-                            navController.navigate("E-sign")
+                            viewModel.documents.clear()
+                            navController.popBackStack()
                         }
                 )
                 Spacer(Modifier.weight(1f))
@@ -140,8 +133,8 @@ fun YourDocumentScreen(
                 Spacer(Modifier.weight(1.3f))
             }
             Spacer(Modifier.height(20.dp))
-            photoUriList.forEachIndexed { i, _ ->
-                map.put(
+            viewModel.documents.forEachIndexed { i, _ ->
+                viewModel.pageStates.put(
                     i, PageState(
                         scale = remember { mutableStateOf(1f) },
                         offsetX = remember { mutableStateOf(0f) },
@@ -152,36 +145,32 @@ fun YourDocumentScreen(
                         isZoomEnabled = remember { mutableStateOf(true) }
                     ))
             }
-            Log.d("map", map[0].toString())
-            Log.d("map", photoUriList.size.toString())
-            Log.d("map", pager.pageCount.toString())
-            Log.d("map", pager.currentPage.toString())
-            var currentPath by map.getValue(pager.currentPage).currentPath
-            var isDrawing by map.getValue(pager.currentPage).isDrawing
-            var isZoomEnabled by map.getValue(pager.currentPage).isZoomEnabled
+            val isDrawing = viewModel.pageStates.getValue(pager.currentPage).isDrawing
+            var isZoomEnabled by viewModel.pageStates.getValue(pager.currentPage).isZoomEnabled
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
                     .clip(shape = MaterialTheme.shapes.large),
             ) {
-
-                Log.d("map", map.toString())
+                viewModel.documents.forEach {
+                    viewModel.currentPdfBitmaps.add(viewModel.getBitmapByUri(context, it))
+                }
+                Log.d("map", viewModel.pageStates.toString())
                 HorizontalPager(
                     state = pager,
                     modifier = Modifier.fillMaxSize(),
                     verticalAlignment = Alignment.CenterVertically,
                     userScrollEnabled = false
                 ) {
-                    var scale by map.getValue(pager.currentPage).scale
-                    var offsetX by map.getValue(pager.currentPage).offsetX
-                    var offsetY by map.getValue(pager.currentPage).offsetY
-                    var drawingPath = map.getValue(pager.currentPage).drawingPath
-                    val bitmap = viewModel.getBitmapByUri(context, photoUriList[pager.currentPage])
+                    var scale by viewModel.pageStates.getValue(pager.currentPage).scale
+                    var offsetX by viewModel.pageStates.getValue(pager.currentPage).offsetX
+                    var offsetY by viewModel.pageStates.getValue(pager.currentPage).offsetY
+                    var drawingPath = viewModel.pageStates.getValue(pager.currentPage).drawingPath
                     Box(
                         modifier = Modifier
-                            .width(bitmap.width.dp)
-                            .height(bitmap.height.dp)
+                            .width(viewModel.currentPdfBitmaps[pager.currentPage].width.dp)
+                            .height(viewModel.currentPdfBitmaps[pager.currentPage].height.dp)
                             .pointerInput(isZoomEnabled) {
                                 if (isZoomEnabled) {
                                     detectTransformGestures { _, pan, zoom, _ ->
@@ -192,9 +181,8 @@ fun YourDocumentScreen(
                                 }
                             }
                     ) {
-                        // Отображаем изображение с возможностью масштабирования
                         AsyncImage(
-                            model = photoUriList[pager.currentPage],
+                            model = viewModel.currentPdfBitmaps[pager.currentPage],
                             contentDescription = null,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -206,26 +194,23 @@ fun YourDocumentScreen(
                                 )
                         )
 
-
-                        if (isDrawing) {
-                            SignCanvas(
-                                drawingPath, modifier = Modifier
-                                    .fillMaxSize()
-                                    .onGloballyPositioned { coordinates ->
-                                        // Получаем реальные размеры в пикселях
-                                        composeCanvasSize = IntSize(
-                                            coordinates.size.width,
-                                            coordinates.size.height
-                                        )
-                                    }
-                                    .graphicsLayer(
-                                        scaleX = scale,
-                                        scaleY = scale,
-                                        translationX = offsetX,
-                                        translationY = offsetY
+                        SignCanvas(
+                            drawingPath, isDrawing = isDrawing, modifier = Modifier
+                                .fillMaxSize()
+                                .onGloballyPositioned { coordinates ->
+                                    composeCanvasSize = IntSize(
+                                        coordinates.size.width,
+                                        coordinates.size.height
                                     )
-                            )
-                        }
+                                }
+                                .graphicsLayer(
+                                    scaleX = scale,
+                                    scaleY = scale,
+                                    translationX = offsetX,
+                                    translationY = offsetY
+                                )
+                        )
+
                     }
                 }
             }
@@ -273,53 +258,37 @@ fun YourDocumentScreen(
                         }
                 )
             }
+            var enabled by remember { mutableStateOf(false) }
             Spacer(Modifier.height(40.dp))
             Button(
                 onClick = {
                     isZoomEnabled = !isZoomEnabled
-                    isDrawing = true
-                    currentPath = Path()
+                    isDrawing.value = !isDrawing.value
+                    enabled = true
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
                 shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = BluePrimary
+                    containerColor = OrangePrimary
                 )
             ) {
                 Text(
-                    text = "Start drawing",
+                    text = if (isDrawing.value) "Stop" else "Draw",
                     style = MaterialTheme.typography.displayMedium.copy(
                         color = Color.White
                     )
                 )
+
             }
+
             val context = LocalContext.current
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
-                    isDrawing = false
-                    val bitmaps = mutableListOf<Bitmap>()
-                    val bitmapsPaths = mutableListOf<Path>()
-                    map.values.forEachIndexed { index, it ->
-                        bitmaps.add(
-                            viewModel.transformPathOnBitmap(
-                                originalBitmap = viewModel.getBitmapByUri(
-                                    context,
-                                    photoUriList[index]
-                                ),
-                                composeCanvasSize = composeCanvasSize,
-                                density = density,
-                                paths = it.drawingPath
-                            )
-                        )
-                        bitmapsPaths.addAll(it.drawingPath)
-                    }
-                    if (bitmapsPaths.isNotEmpty()) {
-                        uri.value = viewModel.saveBitmapsToPdf(context, bitmaps)
-                    }
-                    showDialog.value = true
+                    isDrawing.value = false
+                    writeText.value = true
                 },
 
                 modifier = Modifier
@@ -327,8 +296,8 @@ fun YourDocumentScreen(
                     .height(50.dp),
                 shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = BluePrimary
-                )
+                    containerColor = OrangePrimary
+                ),
             ) {
                 Text(
                     text = "Save",
@@ -338,10 +307,11 @@ fun YourDocumentScreen(
                 )
             }
         }
-        if (showDialog.value) {
+        if (writeText.value) {
+            val isError = remember { mutableStateOf(false) }
             Dialog(
                 onDismissRequest = {
-                    navController.navigate("E-sign")
+                    navController.popBackStack()
                 }
             ) {
                 Box(
@@ -357,21 +327,39 @@ fun YourDocumentScreen(
                             .clip(MaterialTheme.shapes.large),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Spacer(Modifier.height(10.dp))
-                        Icon(
-                            painter = painterResource(R.drawable.apply),
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
-                            tint = Color.Black
-                        )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(20.dp))
                         Text(
-                            text = "Document saved",
+                            text = "Write name for document",
                             style = MaterialTheme.typography.headlineSmall.copy(
-                                fontSize = 24.sp
+                                fontSize = 18.sp
                             )
                         )
-                        Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(40.dp))
+                        BasicTextField(
+                            value = text.value,
+                            onValueChange = { text.value = it },
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .padding(bottom = 4.dp)
+                                .wrapContentHeight(),
+                            singleLine = true,
+                            decorationBox = { innerTextField ->
+
+                                Column {
+
+                                    innerTextField()
+
+                                    Spacer(Modifier.height(2.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(if (isError.value) Color.Red else Color.Black)
+                                    )
+                                }
+                            }
+                        )
+                        Spacer(Modifier.height(30.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -381,31 +369,13 @@ fun YourDocumentScreen(
                             Button(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = BluePrimary
+                                    containerColor = OrangePrimary
                                 ),
                                 onClick = {
-                                    navController.popBackStack()
-                                    val shareIntent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        type = "application/pdf"
-                                        putExtra(Intent.EXTRA_STREAM, uri.value)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    try {
-                                        context.startActivity(
-                                            Intent.createChooser(
-                                                shareIntent,
-                                                "Отправить PDF через"
-                                            ).apply {
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                        )
-                                    } catch (_: ActivityNotFoundException) {
-                                        Toast.makeText(context, "Нет доступных приложений", Toast.LENGTH_SHORT).show()
-                                    }
+                                    writeText.value = false
                                 }) {
                                 Text(
-                                    text = "Share",
+                                    text = "Back",
                                     style = MaterialTheme.typography.displayMedium.copy(
                                         color = Background
                                     )
@@ -416,15 +386,42 @@ fun YourDocumentScreen(
                             Button(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = Color.White
+                                    containerColor = Background
                                 ),
-
+                                enabled = text.value != "",
                                 onClick = {
-                                    navController.popBackStack()
+                                    if (viewModel.isFileNameExists(context, text.value)) {
+                                        isError.value = true
+                                        Toast.makeText(
+                                            context, "file with this name is already exists",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    } else {
+                                        isError.value = false
+                                        val bitmapsPaths = mutableListOf<Path>()
+                                        val bitmapsToSave = mutableListOf<Bitmap>()
+                                        viewModel.pageStates.values.forEachIndexed { index, it ->
+                                            bitmapsToSave.add(
+                                                viewModel.transformPathOnBitmap(
+                                                    originalBitmap = viewModel.currentPdfBitmaps[index],
+                                                    composeCanvasSize = composeCanvasSize,
+                                                    density = density,
+                                                    paths = it.drawingPath
+                                                )
+                                            )
+                                            bitmapsPaths.addAll(it.drawingPath)
+                                        }
+                                        viewModel.saveBitmapsToPdf(context, bitmapsToSave, text.value)
+                                        viewModel.pageStates.clear()
+                                        showDialog.value = true
+
+                                    }
                                 }) {
                                 Text(
-                                    text = "Finish",
-                                    style = MaterialTheme.typography.displayMedium
+                                    text = "Save",
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        color = OrangePrimary
+                                    )
                                 )
                             }
                             Spacer(Modifier.width(10.dp))
@@ -434,7 +431,109 @@ fun YourDocumentScreen(
             }
         }
     }
+    if (showDialog.value) {
+        Dialog(
+            onDismissRequest = {
+                navController.navigate("E-sign")
+            }
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(250.dp)
+                    .height(200.dp)
+                    .clip(MaterialTheme.shapes.large)
+                    .background(Color.White)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(MaterialTheme.shapes.large),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Spacer(Modifier.height(10.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.apply),
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = Color.Black
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = "Document saved",
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontSize = 24.sp
+                        )
+                    )
+                    Spacer(Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        Spacer(Modifier.width(10.dp))
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = OrangePrimary
+                            ),
+                            onClick = {
+                                navController.popBackStack()
+                                val shareIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_STREAM, viewModel.currentPdf.value)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                try {
+                                    context.startActivity(
+                                        Intent.createChooser(
+                                            shareIntent,
+                                            "Отправить PDF через"
+                                        ).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                    )
+                                } catch (_: ActivityNotFoundException) {
+                                    Toast.makeText(
+                                        context,
+                                        "Нет доступных приложений",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }) {
+                            Text(
+                                text = "Share",
+                                style = MaterialTheme.typography.displayMedium.copy(
+                                    color = Background
+                                )
+                            )
+                        }
+
+                        Spacer(Modifier.width(10.dp))
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White
+                            ),
+
+                            onClick = {
+                                navController.popBackStack()
+                            }) {
+                            Text(
+                                text = "Finish",
+                                style = MaterialTheme.typography.displayMedium
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                    }
+                }
+            }
+        }
+    }
 }
+
+
+
 
 
 data class PageState(
@@ -451,19 +550,17 @@ data class PageState(
 @Composable
 fun YourDocumentScreenBitmap(
     navController: NavController,
-    map: MutableMap<Int, PageState>,
-    bitmaps: SnapshotStateList<Bitmap>,
-    pdfUri: MutableState<Uri>,
     viewModel: PhotoViewModel
 ) {
     DisposableEffect({}) {
         onDispose {
-            viewModel.map.clear()
+            viewModel.pageStates.clear()
             viewModel.updateData()
         }
     }
+    val text = remember { mutableStateOf("") }
+    val writeText = remember { mutableStateOf(false) }
     val showDialog = remember { mutableStateOf(false) }
-    val uri = remember { mutableStateOf("".toUri()) }
     var composeCanvasSize by remember { mutableStateOf(IntSize.Zero) }
     val density = LocalDensity.current.density
     val context = LocalContext.current
@@ -474,7 +571,7 @@ fun YourDocumentScreenBitmap(
             .background(Color.White),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        val pager = rememberPagerState { bitmaps.size }
+        val pager = rememberPagerState { viewModel.currentPdfBitmaps.size }
         val coroutineScope = rememberCoroutineScope()
         Column(
             modifier = Modifier
@@ -497,8 +594,10 @@ fun YourDocumentScreenBitmap(
                         .clickable(
                             indication = null,
                             interactionSource = remember { MutableInteractionSource() }) {
-                            bitmaps.clear()
-                            navController.navigate("history")
+                            viewModel.currentPdfBitmaps.clear()
+                            viewModel.uriList.clear()
+                            viewModel.updateData()
+                            navController.popBackStack()
                         }
                 )
                 Spacer(Modifier.weight(1f))
@@ -512,9 +611,9 @@ fun YourDocumentScreenBitmap(
 
             }
             Spacer(Modifier.height(20.dp))
-            if (bitmaps.isNotEmpty()) {
-                bitmaps.forEachIndexed { i, _ ->
-                    map.put(
+            if (viewModel.currentPdfBitmaps.isNotEmpty()) {
+                viewModel.currentPdfBitmaps.forEachIndexed { i, _ ->
+                    viewModel.pageStatesBitmap.put(
                         i, PageState(
                             scale = remember { mutableStateOf(1f) },
                             offsetX = remember { mutableStateOf(0f) },
@@ -526,9 +625,8 @@ fun YourDocumentScreenBitmap(
                         ))
                 }
             }
-            var currentPath by map.getValue(pager.currentPage).currentPath
-            var isDrawing by map.getValue(pager.currentPage).isDrawing
-            var isZoomEnabled by map.getValue(pager.currentPage).isZoomEnabled
+            val isDrawing = viewModel.pageStatesBitmap.getValue(pager.currentPage).isDrawing
+            var isZoomEnabled by viewModel.pageStatesBitmap.getValue(pager.currentPage).isZoomEnabled
 
             Box(
                 modifier = Modifier
@@ -538,18 +636,19 @@ fun YourDocumentScreenBitmap(
                 contentAlignment = Alignment.Center
             ) {
 
-                Log.d("map", map.toString())
+                Log.d("map", viewModel.pageStatesBitmap.toString())
                 HorizontalPager(
                     state = pager,
                     modifier = Modifier.fillMaxSize(),
                     verticalAlignment = Alignment.CenterVertically,
                     userScrollEnabled = false
                 ) {
-                    var scale by map.getValue(pager.currentPage).scale
-                    var offsetX by map.getValue(pager.currentPage).offsetX
-                    var offsetY by map.getValue(pager.currentPage).offsetY
-                    var drawingPath = map.getValue(pager.currentPage).drawingPath
-                    val bitmap = bitmaps[pager.currentPage]
+                    var scale by viewModel.pageStatesBitmap.getValue(pager.currentPage).scale
+                    var offsetX by viewModel.pageStatesBitmap.getValue(pager.currentPage).offsetX
+                    var offsetY by viewModel.pageStatesBitmap.getValue(pager.currentPage).offsetY
+                    var drawingPath =
+                        viewModel.pageStatesBitmap.getValue(pager.currentPage).drawingPath
+                    val bitmap = viewModel.currentPdfBitmaps[pager.currentPage]
                     Box(
                         modifier = Modifier
                             .width(bitmap.width.dp)
@@ -564,7 +663,6 @@ fun YourDocumentScreenBitmap(
                                 }
                             }
                     ) {
-                        // Отображаем изображение с возможностью масштабирования
                         AsyncImage(
                             model = bitmap,
                             contentDescription = null,
@@ -579,25 +677,23 @@ fun YourDocumentScreenBitmap(
                         )
 
 
-                        if (isDrawing) {
-                            SignCanvas(
-                                drawingPath, modifier = Modifier
-                                    .fillMaxSize()
-                                    .onGloballyPositioned { coordinates ->
-                                        // Получаем реальные размеры в пикселях
-                                        composeCanvasSize = IntSize(
-                                            coordinates.size.width,
-                                            coordinates.size.height
-                                        )
-                                    }
-                                    .graphicsLayer(
-                                        scaleX = scale,
-                                        scaleY = scale,
-                                        translationX = offsetX,
-                                        translationY = offsetY
+                        SignCanvas(
+                            drawingPath, isDrawing = isDrawing, modifier = Modifier
+                                .fillMaxSize()
+                                .onGloballyPositioned { coordinates ->
+                                    composeCanvasSize = IntSize(
+                                        coordinates.size.width,
+                                        coordinates.size.height
                                     )
-                            )
-                        }
+                                }
+                                .graphicsLayer(
+                                    scaleX = scale,
+                                    scaleY = scale,
+                                    translationX = offsetX,
+                                    translationY = offsetY
+                                )
+                        )
+
                     }
                 }
             }
@@ -645,62 +741,45 @@ fun YourDocumentScreenBitmap(
                         }
                 )
             }
+            var saveEnabled by remember { mutableStateOf(false) }
             Spacer(Modifier.height(40.dp))
             Button(
                 onClick = {
                     isZoomEnabled = !isZoomEnabled
-                    isDrawing = true
-                    currentPath = Path()
+                    isDrawing.value = !isDrawing.value
+                    saveEnabled = true
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
                 shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = BluePrimary
+                    containerColor = OrangePrimary
                 )
             ) {
                 Text(
-                    text = "Start drawing",
+                    text = if (isDrawing.value) "Stop" else "Draw",
                     style = MaterialTheme.typography.displayMedium.copy(
                         color = Color.White
                     )
                 )
             }
-            val context = LocalContext.current
             Spacer(Modifier.height(20.dp))
             Button(
                 onClick = {
-                    isDrawing = false
-                    val bitmapsPaths = mutableListOf<Path>()
-                    val bitmapsToSave = mutableListOf<Bitmap>()
-                    map.values.forEachIndexed { index, it ->
-                        bitmapsToSave.add(
-                            viewModel.transformPathOnBitmap(
-                                originalBitmap = bitmaps[index],
-                                composeCanvasSize = composeCanvasSize,
-                                density = density,
-                                paths = it.drawingPath
-                            )
-                        )
-                        bitmapsPaths.addAll(it.drawingPath)
+                    if (text.value == "") {
+                        writeText.value = true
                     }
-                    if (bitmapsPaths.isNotEmpty()) {
-                        Log.d("err", "${bitmapsPaths}, ${uri.value}")
-                        uri.value = viewModel.saveBitmapsToPdf(context, bitmapsToSave)
-                    } else {
-                        uri.value = pdfUri.value
-                    }
-                    viewModel.map.clear()
-                    showDialog.value = true
+
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp),
                 shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = BluePrimary
-                )
+                    containerColor = OrangePrimary
+                ),
+                enabled = saveEnabled
             ) {
                 Text(
                     text = "Save",
@@ -710,10 +789,11 @@ fun YourDocumentScreenBitmap(
                 )
             }
         }
-        if (showDialog.value) {
+        if (writeText.value) {
+            val isError = remember { mutableStateOf(false) }
             Dialog(
                 onDismissRequest = {
-                    navController.navigate("E-sign")
+                    navController.popBackStack()
                 }
             ) {
                 Box(
@@ -729,21 +809,37 @@ fun YourDocumentScreenBitmap(
                             .clip(MaterialTheme.shapes.large),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Spacer(Modifier.height(10.dp))
-                        Icon(
-                            painter = painterResource(R.drawable.apply),
-                            contentDescription = null,
-                            modifier = Modifier.size(40.dp),
-                            tint = Color.Black
-                        )
-                        Spacer(Modifier.height(10.dp))
+                        Spacer(Modifier.height(20.dp))
                         Text(
-                            text = "Document saved",
+                            text = "Write name for document",
                             style = MaterialTheme.typography.headlineSmall.copy(
-                                fontSize = 24.sp
+                                fontSize = 18.sp
                             )
                         )
-                        Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(40.dp))
+                        BasicTextField(
+                            value = text.value,
+
+                            onValueChange = { text.value = it },
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .padding(bottom = 4.dp)
+                                .wrapContentHeight(),
+                            singleLine = true,
+                            decorationBox = { innerTextField ->
+                                Column {
+                                    innerTextField()
+                                    Spacer(Modifier.height(2.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(1.dp)
+                                            .background(if (isError.value) Color.Red else Color.Black)
+                                    )
+                                }
+                            }
+                        )
+                        Spacer(Modifier.height(30.dp))
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -753,31 +849,13 @@ fun YourDocumentScreenBitmap(
                             Button(
                                 modifier = Modifier.weight(1f),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = BluePrimary
+                                    containerColor = OrangePrimary
                                 ),
                                 onClick = {
-                                    navController.popBackStack()
-                                    val shareIntent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        type = "application/pdf"
-                                        putExtra(Intent.EXTRA_STREAM, uri.value)
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    try {
-                                        context.startActivity(
-                                            Intent.createChooser(
-                                                shareIntent,
-                                                "Отправить PDF через"
-                                            ).apply {
-                                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                            }
-                                        )
-                                    } catch (_: ActivityNotFoundException) {
-                                        Toast.makeText(context, "Нет доступных приложений", Toast.LENGTH_SHORT).show()
-                                    }
+                                    writeText.value = false
                                 }) {
                                 Text(
-                                    text = "Share",
+                                    text = "Back",
                                     style = MaterialTheme.typography.displayMedium.copy(
                                         color = Background
                                     )
@@ -790,12 +868,42 @@ fun YourDocumentScreenBitmap(
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = Background
                                 ),
+                                enabled = text.value != "",
                                 onClick = {
-                                    navController.navigate("E-sign")
+                                    if (viewModel.isFileNameExists(context, text.value)) {
+                                        isError.value = true
+                                        Toast.makeText(
+                                            context, "file with this name already exists",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    } else {
+                                        isError.value = false
+                                        val bitmapsPaths = mutableListOf<Path>()
+                                        val bitmapsToSave = mutableListOf<Bitmap>()
+                                        viewModel.pageStatesBitmap.values.forEachIndexed { index, it ->
+                                            bitmapsToSave.add(
+                                                viewModel.transformPathOnBitmap(
+                                                    originalBitmap = viewModel.currentPdfBitmaps[index],
+                                                    composeCanvasSize = composeCanvasSize,
+                                                    density = density,
+                                                    paths = it.drawingPath
+                                                )
+                                            )
+                                            bitmapsPaths.addAll(it.drawingPath)
+                                        }
+                                        if (bitmapsPaths.isNotEmpty()) {
+                                            viewModel.currentPdf.value =
+                                                viewModel.saveBitmapsToPdf(context, bitmapsToSave, text.value)
+                                        }
+                                        viewModel.pageStates.clear()
+                                        showDialog.value = true
+                                    }
                                 }) {
                                 Text(
-                                    text = "Finish",
-                                    style = MaterialTheme.typography.displayMedium
+                                    text = "Save",
+                                    style = MaterialTheme.typography.displayMedium.copy(
+                                        color = OrangePrimary
+                                    )
                                 )
                             }
                             Spacer(Modifier.width(10.dp))
@@ -805,149 +913,101 @@ fun YourDocumentScreenBitmap(
             }
         }
     }
-}
-
-
-@Composable
-fun DocumentScreen(
-    navController: NavController,
-    photoUriList: SnapshotStateList<Uri>,
-    onSave: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .fillMaxWidth()
-            .background(Color.White),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-
-        val pager = rememberPagerState { photoUriList.size }
-        val coroutineScope = rememberCoroutineScope()
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.95f)
-                .background(Color.White),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.cross),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .size(36.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }) {
-                            photoUriList.clear()
-                            navController.navigate("E-sign")
-                        }
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "Your Document",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    painter = painterResource(R.drawable.apply),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .size(36.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }) {
-                            navController.navigate("E-sign")
-                        }
-                )
+    if (showDialog.value) {
+        Dialog(
+            onDismissRequest = {
+                navController.navigate("E-sign")
             }
-            Spacer(Modifier.height(20.dp))
+        ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(shape = MaterialTheme.shapes.large),
-                contentAlignment = Alignment.Center
+                    .width(250.dp)
+                    .height(200.dp)
+                    .clip(MaterialTheme.shapes.large)
+                    .background(Color.White)
             ) {
-                HorizontalPager(
-                    state = pager,
-                    modifier = Modifier.fillMaxSize(),
-                    userScrollEnabled = false
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(MaterialTheme.shapes.large),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    AsyncImage(
-                        photoUriList[pager.currentPage],
+                    Spacer(Modifier.height(10.dp))
+                    Icon(
+                        painter = painterResource(R.drawable.apply),
                         contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.size(40.dp),
+                        tint = Color.Black
                     )
-                }
-            }
-            Spacer(Modifier.height(40.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.arrow), contentDescription = null,
-                    modifier = Modifier
-                        .rotate(180f)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            enabled = pager.currentPage > 0
-                        ) {
-                            coroutineScope.launch {
-                                pager.scrollToPage(pager.currentPage - 1)
-                            }
-                        }
-                )
-                Spacer(Modifier.weight(1f))
-                Column {
-                    Spacer(Modifier.height(5.dp))
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        text = "Page ${pager.currentPage + 1}",
-                        style = MaterialTheme.typography.headlineMedium,
+                        text = "Document saved",
+                        style = MaterialTheme.typography.headlineSmall.copy(
+                            fontSize = 24.sp
+                        )
                     )
-                }
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    painter = painterResource(R.drawable.arrow), contentDescription = null,
-                    modifier = Modifier
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            enabled = pager.currentPage < pager.pageCount
-                        ) {
-                            coroutineScope.launch {
-                                pager.scrollToPage(pager.currentPage + 1)
-                            }
+                    Spacer(Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                    ) {
+                        Spacer(Modifier.width(10.dp))
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = OrangePrimary
+                            ),
+                            onClick = {
+                                navController.popBackStack()
+                                val shareIntent = Intent().apply {
+                                    action = Intent.ACTION_SEND
+                                    type = "application/pdf"
+                                    putExtra(Intent.EXTRA_STREAM, viewModel.currentPdf.value)
+                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                }
+                                try {
+                                    context.startActivity(
+                                        Intent.createChooser(
+                                            shareIntent,
+                                            "Отправить PDF через"
+                                        ).apply {
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                    )
+                                } catch (_: ActivityNotFoundException) {
+                                    Toast.makeText(
+                                        context,
+                                        "Нет доступных приложений",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }) {
+                            Text(
+                                text = "Share",
+                                style = MaterialTheme.typography.displayMedium.copy(
+                                    color = Background
+                                )
+                            )
                         }
-                )
-            }
-            Spacer(Modifier.height(40.dp))
-            Button(
-                onClick = {
-                    onSave()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = BluePrimary
-                )
-            ) {
-                Text(
-                    text = "Save",
-                    style = MaterialTheme.typography.displayMedium.copy(
-                        color = Color.White
-                    )
-                )
+
+                        Spacer(Modifier.width(10.dp))
+                        Button(
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Background
+                            ),
+                            onClick = {
+                                navController.navigate("E-sign")
+                            }) {
+                            Text(
+                                text = "Finish",
+                                style = MaterialTheme.typography.displayMedium
+                            )
+                        }
+                        Spacer(Modifier.width(10.dp))
+                    }
+                }
             }
         }
     }
@@ -955,152 +1015,11 @@ fun DocumentScreen(
 
 
 @Composable
-fun SaveDocumentScreen(
-    navController: NavController,
-    images: SnapshotStateList<Uri>,
-    onSave: () -> Unit
+fun SignCanvas(
+    paths: SnapshotStateList<Path>,
+    modifier: Modifier = Modifier,
+    isDrawing: MutableState<Boolean>
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxHeight()
-            .fillMaxWidth()
-            .background(Color.White),
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-
-        val pager = rememberPagerState { images.size }
-        val coroutineScope = rememberCoroutineScope()
-        Column(
-            modifier = Modifier
-                .fillMaxHeight()
-                .fillMaxWidth(0.95f)
-                .background(Color.White),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.cross),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .size(36.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }) {
-                            images.clear()
-                            navController.navigate("E-sign")
-                        }
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "Your Document",
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    painter = painterResource(R.drawable.apply),
-                    contentDescription = null,
-                    modifier = Modifier
-                        .padding(end = 12.dp)
-                        .size(36.dp)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() }) {
-                            navController.navigate("E-sign")
-                        }
-                )
-            }
-            Spacer(Modifier.height(20.dp))
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .clip(shape = MaterialTheme.shapes.large),
-                contentAlignment = Alignment.Center
-            ) {
-                HorizontalPager(
-                    state = pager,
-                    modifier = Modifier.fillMaxSize(),
-                    userScrollEnabled = false
-                ) {
-                    AsyncImage(
-                        images[pager.currentPage],
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-            }
-            Spacer(Modifier.height(40.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.arrow), contentDescription = null,
-                    modifier = Modifier
-                        .rotate(180f)
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            enabled = pager.currentPage > 0
-                        ) {
-                            coroutineScope.launch {
-                                pager.scrollToPage(pager.currentPage - 1)
-                            }
-                        }
-                )
-                Spacer(Modifier.weight(1f))
-                Column {
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        text = "Page ${pager.currentPage + 1}",
-                        style = MaterialTheme.typography.headlineMedium,
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                Icon(
-                    painter = painterResource(R.drawable.arrow), contentDescription = null,
-                    modifier = Modifier
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() },
-                            enabled = pager.currentPage < pager.pageCount
-                        ) {
-                            coroutineScope.launch {
-                                pager.scrollToPage(pager.currentPage + 1)
-                            }
-                        }
-                )
-            }
-            Spacer(Modifier.height(40.dp))
-            Button(
-                onClick = {
-                    onSave()
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = MaterialTheme.shapes.medium,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = BluePrimary
-                )
-            ) {
-                Text(
-                    text = "Save",
-                    style = MaterialTheme.typography.displayMedium.copy(
-                        color = Color.White
-                    )
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun SignCanvas(paths: SnapshotStateList<Path>, modifier: Modifier = Modifier) {
     var currentPath by remember { mutableStateOf<Path>(Path()) }
     var currentPoints by remember { mutableStateOf(0) }
     val drawColor = Color.Black
@@ -1109,27 +1028,29 @@ fun SignCanvas(paths: SnapshotStateList<Path>, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxSize()
             .background(Color.Transparent)
-            .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragStart = { touch ->
+            .pointerInput(isDrawing.value) {
+                if (isDrawing.value) {
+                    detectDragGestures(
+                        onDragStart = { touch ->
 
-                        val newPath = Path().apply {
-                            moveTo(touch.x, touch.y)
+                            val newPath = Path().apply {
+                                moveTo(touch.x, touch.y)
+                            }
+                            currentPath = newPath
+                            currentPoints = 1
+                        },
+                        onDrag = { change, _ ->
+                            currentPath.lineTo(change.position.x, change.position.y)
+                            currentPoints++
+                        },
+                        onDragEnd = {
+
+                            currentPath.let { paths.add(it) }
+                            currentPath = Path()
+                            currentPoints = 0
                         }
-                        currentPath = newPath
-                        currentPoints = 1
-                    },
-                    onDrag = { change, _ ->
-                        currentPath.lineTo(change.position.x, change.position.y)
-                        currentPoints++
-                    },
-                    onDragEnd = {
-
-                        currentPath.let { paths.add(it) }
-                        currentPath = Path()
-                        currentPoints = 0
-                    }
-                )
+                    )
+                }
 
             }
     ) {

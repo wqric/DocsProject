@@ -65,4 +65,5 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation("io.coil-kt:coil-compose:2.6.0")
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0-beta1")
+    implementation("com.google.accompanist:accompanist-systemuicontroller:0.27.0")
 }

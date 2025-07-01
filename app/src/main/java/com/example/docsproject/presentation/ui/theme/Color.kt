@@ -11,7 +11,7 @@ val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
 
 val Background = Color(0xFFF9F9F9)
-val BluePrimary = Color(0xFF1C76D6)
+val OrangePrimary = Color(0xFFD6541C)
 val Gray1 = Color(0xFFEDF1F9)
 val Gray2 = Color(0xFFE1E1E1)
 val EmptyIcon = Color(0xFFA4A4A4)

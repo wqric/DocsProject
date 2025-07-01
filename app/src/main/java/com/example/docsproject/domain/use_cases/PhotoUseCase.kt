@@ -10,11 +10,15 @@ import android.util.Log
 import com.example.docsproject.domain.reps.PhotoRepository
 import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
+import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.IOException
 import java.io.InputStream
+import kotlin.math.min
+import androidx.core.graphics.scale
 
 class PhotoUseCase(private val photoRepository: PhotoRepository) {
-    fun saveDocuments(context: Context, uris: List<Uri>) {
+    fun saveDocuments(context: Context, uris: List<Uri>, name: String) {
         try {
             val document = PdfDocument()
             val bitmaps = mutableListOf<Bitmap>()
@@ -33,11 +37,14 @@ class PhotoUseCase(private val photoRepository: PhotoRepository) {
                 canvas.drawBitmap(bitmap, 0f, 0f, null)
                 document.finishPage(page)
             }
-            photoRepository.savePdfDocument(context, document)
+            photoRepository.savePdfDocument(context, document, name)
 
         } catch (e: Exception) {
             Log.e("PDF_CREATION", "Ошибка создания PDF: ${e.message}")
         }
+    }
+    fun getDocument(context: Context, uri: Uri): File {
+        return photoRepository.getDocumentByUri(context, uri)
     }
 
     fun deleteDocument(uri: Uri) {
@@ -53,22 +60,43 @@ class PhotoUseCase(private val photoRepository: PhotoRepository) {
         return BitmapFactory.decodeStream(inputStream)
     }
 
-    fun saveBitmapsToPdf(context: Context, bitmaps: List<Bitmap>): Uri {
+    private fun compressBitmap(original: Bitmap, maxDimension: Int = 2400, quality: Int = 80): Bitmap {
+        val scale = min(
+            maxDimension.toFloat() / original.width,
+            maxDimension.toFloat() / original.height
+        ).coerceAtMost(1f)
+
+        val width = (original.width * scale).toInt()
+        val height = (original.height * scale).toInt()
+
+        return original.scale(width, height).apply {
+            val byteArray = ByteArrayOutputStream().use { stream ->
+                this.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+                stream.toByteArray()
+            }
+            BitmapFactory.decodeByteArray(byteArray, 0, byteArray.size)
+        }
+    }
+    fun isFileNameExists(context: Context, fileName: String): Boolean {
+        return photoRepository.isFileNameExists(context, fileName)
+    }
+    fun saveBitmapsToPdf(context: Context, bitmaps: List<Bitmap>, name: String): Uri {
         try {
             val document = PdfDocument()
             bitmaps.forEachIndexed { index, bitmap ->
+                val bit = compressBitmap(bitmap)
                 val pageInfo = PdfDocument.PageInfo.Builder(
-                    bitmap.width,
-                    bitmap.height,
+                    bit.width,
+                    bit.height,
                     index + 1
                 ).create()
-
                 val page = document.startPage(pageInfo)
                 val canvas = page.canvas
-                canvas.drawBitmap(bitmap, 0f, 0f, null)
+                canvas.drawBitmap(bit, 0f, 0f, null)
                 document.finishPage(page)
+                bit.recycle()
             }
-            return photoRepository.savePdfDocument(context, document)
+            return photoRepository.savePdfDocument(context, document, name)
         } catch (e: Exception) {
             Log.e("PDF_CREATION", "Ошибка создания PDF: ${e.message}")
             return "".toUri()
