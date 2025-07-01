@@ -1,18 +1,18 @@
 package com.example.docsproject.presentation.ui
 
-import android.Manifest
+import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,19 +28,20 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.NavController
@@ -54,8 +55,15 @@ import com.example.docsproject.presentation.ui.theme.Background
 import com.example.docsproject.presentation.ui.theme.BluePrimary
 import com.example.docsproject.presentation.ui.theme.DocsProjectTheme
 import com.example.docsproject.presentation.viewmodels.PhotoViewModel
-import kotlinx.serialization.Serializable
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_JPEG
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_FORMAT_PDF
+import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.SCANNER_MODE_FULL
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
+import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import kotlinx.coroutines.launch
 import org.koin.androidx.viewmodel.ext.android.viewModel
+import java.lang.Thread.sleep
 
 sealed class Route(
     val route: String,
@@ -73,22 +81,26 @@ class MainActivity : ComponentActivity() {
     val viewModel: PhotoViewModel by viewModel()
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-            viewModel.onPhotoTaken(success)
-        }
+        val options = GmsDocumentScannerOptions.Builder()
+            .setScannerMode(SCANNER_MODE_FULL)
+            .setGalleryImportAllowed(true)
+            .setPageLimit(5)
+            .setResultFormats(RESULT_FORMAT_PDF, RESULT_FORMAT_JPEG)
+            .build()
+        val scanner = GmsDocumentScanning.getClient(options)
         enableEdgeToEdge()
         setContent {
             DocsProjectTheme {
-                ChangeStatusBarAndNavBarColor()
                 val navController = rememberNavController()
-                val historyState = remember { mutableStateOf(false) }
-                val documentState = remember { mutableStateOf(false) }
-                fun isActive(): Boolean { return !historyState.value || !documentState.value}
-                Box(modifier = Modifier.fillMaxSize()) {
-                    Scaffold(
-                        modifier = Modifier.fillMaxSize(),
-                        bottomBar = {
+                val pdfUri = remember { mutableStateOf("".toUri()) }
+                val currentDocument = remember { mutableStateListOf<Bitmap>() }
+
+                Scaffold(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Background),
+                    bottomBar = {
+                        if (navController.currentRoute() == "E-sign" || navController.currentRoute() == "Settings")
                             NavigationBar(containerColor = Color.White) {
                                 ROUTES.forEach { route ->
 
@@ -134,40 +146,74 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                             }
-                        }
-                    ) { innerPadding ->
-                        NavHost(
-                            navController = navController,
-                            startDestination = Route.ESign.route,
-                            modifier = Modifier
-                                .padding(innerPadding)
-                                .padding(top = 20.dp)
-                        ) {
-                            composable(Route.ESign.route) {
-                                ESignScreen(historyState = historyState, onTakePhotoClick = {
-                                    val uri = viewModel.preparePhotoFile(this@MainActivity)
-                                    cameraLauncher.launch(uri)
-                                }, documentState)
-                            }
-                            composable(Route.Settings.route) {
-                                SettingsScreen()
-                            }
+                    }
+                ) { innerPadding ->
+                    ChangeStatusBarAndNavBarColor()
+                    val images = remember {
+                        mutableStateListOf<Uri>()
+                    }
+                    if (navController.currentRoute() == "E-sign" || navController.currentRoute() == "settings") {
+                        images.clear()
+                    }
+                    val scannerLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.StartIntentSenderForResult()
+                    ) {
+                        if (it.resultCode == RESULT_OK) {
+                            val result = GmsDocumentScanningResult.fromActivityResultIntent(it.data)
+                            images.addAll(result?.pages?.map { it.imageUri } ?: emptyList())
+                            navController.navigate("document")
                         }
                     }
 
-                    val alpha = animateFloatAsState(
-                        targetValue = if (isActive()) 0f else 0.7f,
-                        animationSpec = tween(durationMillis = 300)
-                    )
+                    NavHost(
+                        navController = navController,
+                        startDestination = Route.ESign.route,
+                        modifier = Modifier
+                            .padding(innerPadding)
+                            .padding(top = 20.dp)
+                    ) {
+                        composable(Route.ESign.route) {
+                            viewModel.getAllDocuments()
+                            ESignScreen(
+                                navController = navController,
+                                viewModel = viewModel,
+                                currentDocument = currentDocument,
+                                onTakePhotoClick = {
+                                    scanner.getStartScanIntent(this@MainActivity)
+                                        .addOnSuccessListener {
+                                            scannerLauncher.launch(
+                                                IntentSenderRequest.Builder(it).build()
+                                            )
+                                        }
+                                        .addOnFailureListener {
+                                            Toast.makeText(
+                                                applicationContext,
+                                                it.message,
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                        }
+                                })
+                        }
+                        composable(Route.Settings.route) {
+                            SettingsScreen()
+                        }
+                        composable("history") {
+                            HistoryScreen(
+                                navController = navController,
+                                viewModel = viewModel,
+                                currentDocument = currentDocument,
+                                pdfUri = pdfUri
+                            )
 
-                    if (alpha.value > 0.001f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Color.Black.copy(alpha = alpha.value))
-                        )
+                        }
+                        composable("document") {
+                            YourDocumentScreen(navController, images, viewModel, viewModel.map)
+                        }
+                        composable("document (bitmap)") {
+                            Log.d("document", "init")
+                            YourDocumentScreenBitmap(navController,  viewModel.map, currentDocument, pdfUri, viewModel)
+                        }
                     }
-                    History(historyState, viewModel.getAllPhotos(this@MainActivity))
                 }
             }
         }

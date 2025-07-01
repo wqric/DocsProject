@@ -1,7 +1,10 @@
 package com.example.docsproject.presentation.ui
 
 import android.Manifest
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -11,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,15 +23,25 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,26 +54,24 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
 import com.example.docsproject.presentation.ui.theme.BluePrimary
 import com.example.docsproject.presentation.ui.theme.DocsProjectTheme
 import com.example.docsproject.R
 import com.example.docsproject.presentation.ui.theme.Background
 import com.example.docsproject.presentation.ui.theme.Gray1
+import com.example.docsproject.presentation.viewmodels.PhotoViewModel
+import java.lang.Thread.sleep
 
 @Composable
 
-fun ESignScreen(historyState: MutableState<Boolean>, onTakePhotoClick: () -> Unit, documentState: MutableState<Boolean>) {
-    val context = LocalContext.current
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-
-        } else {
-            Toast.makeText(context, "Доступ к камере отклонён", Toast.LENGTH_SHORT).show()
-        }
-    }
+fun ESignScreen(
+    navController: NavController,
+    viewModel: PhotoViewModel,
+    currentDocument: SnapshotStateList<Bitmap>,
+    onTakePhotoClick: () -> Unit
+) {
+    var alertState by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -73,30 +85,12 @@ fun ESignScreen(historyState: MutableState<Boolean>, onTakePhotoClick: () -> Uni
                 .background(Background),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "E-Sign",
-                    style = MaterialTheme.typography.displayLarge
-                )
-                Spacer(Modifier.weight(1f))
-                Text(
-                    text = "View History",
-                    style = MaterialTheme.typography.displayMedium.copy(
-                        color = BluePrimary
-                    ),
-                    modifier = Modifier
-                        .clickable(
-                            indication = null,
-                            interactionSource = remember { MutableInteractionSource() })
-                        {
-                            historyState.value = true
-                        }
-                )
-            }
-            Spacer(Modifier.weight(1f))
+
+            Text(
+                text = "E-Sign",
+                style = MaterialTheme.typography.displayLarge
+            )
+            Spacer(Modifier.height(20.dp))
             Column(
                 modifier = Modifier
                     .clip(shape = MaterialTheme.shapes.large)
@@ -109,70 +103,67 @@ fun ESignScreen(historyState: MutableState<Boolean>, onTakePhotoClick: () -> Uni
                         ambientColor = Color.Black.copy(alpha = 0.05f)
                     )
                     .background(Color.White),
-                horizontalAlignment = Alignment.CenterHorizontally
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                Spacer(Modifier.weight(1f))
-                Image(
-                    painter = painterResource(R.drawable.document),
-                    contentDescription = null,
-                    modifier = Modifier.size(100.dp)
-                )
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    text = "Upload your document",
-                    style = MaterialTheme.typography.headlineMedium
-                )
-                Spacer(Modifier.height(15.dp))
-                Text(
-                    text = "Let’s add E-Sign to your Files",
-                    style = MaterialTheme.typography.bodyLarge
-                )
-                Spacer(Modifier.height(10.dp))
-                Button(
-                    onClick = {
-                        val isGranted = ContextCompat.checkSelfPermission(
-                            context, Manifest.permission.CAMERA
-                        ) == PackageManager.PERMISSION_GRANTED
-
-                        if (isGranted) {
-                            onTakePhotoClick()
-                            documentState.value = true
-                        } else {
-                            permissionLauncher.launch(Manifest.permission.CAMERA)
-                        }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth(0.95f)
-                        .height(50.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = BluePrimary
-                    )
-                ) {
-                    Text(
-                        text = "Camera",
-                        style = MaterialTheme.typography.displayMedium.copy(
-                            color = Color.White
+                val context = LocalContext.current
+                val pdfPickerLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.OpenDocument()
+                ) { uri: Uri? ->
+                    uri?.let {
+                        context.contentResolver.takePersistableUriPermission(
+                            it,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
                         )
-                    )
+                        val uri = viewModel.saveExternalPdf(context, uri)
+                        currentDocument.addAll(viewModel.renderDocument(uri))
+                        navController.navigate("document (bitmap)")
+                    }
                 }
-                Spacer(Modifier.height(10.dp))
-                Button(
-                    onClick = {},
+
+                Row(
                     modifier = Modifier
                         .fillMaxWidth(0.95f)
-                        .height(50.dp),
-                    shape = MaterialTheme.shapes.medium,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Gray1
-                    )
+                        .fillMaxHeight(0.95f)
                 ) {
-                    Text(
-                        text = "Upload",
-                        style = MaterialTheme.typography.displayMedium
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .weight(1f)
+
+                            .clip(shape = MaterialTheme.shapes.large)
+                            .background(Background)
+                            .clickable {
+                                onTakePhotoClick()
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Camera",
+                            style = MaterialTheme.typography.headlineMedium
+                        )
+                    }
+                    Spacer(Modifier.width(5.dp))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .weight(1f)
+                            .clip(shape = MaterialTheme.shapes.large)
+                            .background(BluePrimary)
+                            .padding(end = 5.dp, top = 5.dp)
+                            .clickable {
+                                pdfPickerLauncher.launch(arrayOf("application/pdf"))
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Upload",
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                color = Color.White
+                            )
+                        )
+                    }
                 }
-                Spacer(Modifier.weight(1f))
             }
             Spacer(Modifier.height(10.dp))
             Box(
@@ -187,7 +178,13 @@ fun ESignScreen(historyState: MutableState<Boolean>, onTakePhotoClick: () -> Uni
                         ambientColor = Color.Black.copy(alpha = 0.05f)
                     )
                     .background(Color.White)
-                    .clickable {},
+                    .clickable {
+                        if (viewModel.uriList.toList().isNotEmpty()) {
+                            navController.navigate("history")
+                        } else {
+                            alertState = true
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Row(
@@ -196,12 +193,12 @@ fun ESignScreen(historyState: MutableState<Boolean>, onTakePhotoClick: () -> Uni
                 ) {
                     Column {
                         Text(
-                            text = "Document Scanner",
+                            text = "History",
                             style = MaterialTheme.typography.titleMedium
                         )
                         Spacer(Modifier.height(5.dp))
                         Text(
-                            text = "Scan doc’s and save",
+                            text = "View your history",
                             style = MaterialTheme.typography.bodyLarge
                         )
                     }
@@ -212,10 +209,29 @@ fun ESignScreen(historyState: MutableState<Boolean>, onTakePhotoClick: () -> Uni
                         modifier = Modifier.size(30.dp)
                     )
                 }
-            }
-            Spacer(Modifier.weight(1f))
 
+            }
+        }
+        if (alertState) {
+            AlertDialog(
+                onDismissRequest = {
+                    alertState = false
+                },
+                title = { Text("Your history is empty!") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            alertState = false
+                        }
+                    ) {
+                        Text("OK")
+                    }
+                },
+                dismissButton = {
+                }
+            )
         }
     }
 }
+
 
